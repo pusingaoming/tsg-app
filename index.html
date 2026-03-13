@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- 加入防快取標籤 -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>天聖宮雲端帳務系統</title>
+    <title>天聖宮帳務系統 v2.0</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
         :root { --primary: #8B0000; --secondary: #D4AF37; --bg: #f4f6f9; --income: #1e7e34; --expense: #c82333; }
@@ -41,17 +40,16 @@
 <div id="authOverlay">
     <div id="loaderUI">
         <div class="loader"></div>
-        <p>系統連線中 (v1.7)...</p>
+        <p>Firebase 雲端引擎連線中...</p>
     </div>
     <div id="errorUI" style="display:none;">
         <p style="color:red; font-weight:bold;">⚠️ 存取權限受限</p>
         <p id="myLineId" style="word-break: break-all; font-size: 12px; background: #eee; padding: 10px;"></p>
-        <p>請將上方 ID 傳給管理員開通</p>
+        <p>您尚未獲得權限。請將上方 ID 交給管理員加入資料庫。</p>
     </div>
 </div>
 
-<!-- 這裡加上了 v1.7，用來確認有沒有更新成功 -->
-<div class="header"><h3 style="margin:0;">天聖宮帳務系統 v1.7</h3></div>
+<div class="header"><h3 style="margin:0;">天聖宮帳務系統 v2.0 (極速版)</h3></div>
 
 <div class="container" id="appUI">
     <div id="page-add">
@@ -81,11 +79,10 @@
             </div>
             <div class="form-group">
                 <label>附件照片</label>
-                <!-- 徹底移除 capture 屬性，改用最寬鬆的設定 -->
                 <input type="file" id="field-file" accept="image/jpeg, image/png, image/jpg">
                 <img id="previewImg">
             </div>
-            <button class="btn btn-submit" id="saveBtn" onclick="handleSave()">儲存帳務</button>
+            <button class="btn btn-submit" id="saveBtn">🚀 極速儲存帳務</button>
         </div>
         <div id="viewerMsg" style="display:none; text-align:center; padding:20px; color:#666;">
             您的權限為「觀看者」，僅供查詢紀錄。
@@ -98,39 +95,91 @@
 </div>
 
 <div class="nav">
-    <div class="nav-item active" id="nav-add" onclick="showPage('add')">新增帳務</div>
-    <div class="nav-item" id="nav-list" onclick="showPage('list')">歷史紀錄</div>
+    <div class="nav-item active" id="nav-add">新增帳務</div>
+    <div class="nav-item" id="nav-list">歷史紀錄</div>
 </div>
 
-<script>
-    const LIFF_ID = "2009442267-QFf68Aj5";
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbx7v13SZGVSFoOkQf9hvvc4etXNjaTuO1u_RKr6gLRorS6sr4CV_5-k519kbSjBK6jc/exec";
-    let user = null;
+<!-- 載入 Firebase 核心模組 -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, doc, getDoc, setDoc, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-    async function init() {
+    // 您的專屬 Firebase 鑰匙
+    const firebaseConfig = {
+        apiKey: "AIzaSyBf8hWz_2gthJvQVxo7BU_Jqep3gRZewv8",
+        authDomain: "tsg-app-4d96d.firebaseapp.com",
+        projectId: "tsg-app-4d96d",
+        storageBucket: "tsg-app-4d96d.firebasestorage.app",
+        messagingSenderId: "580968952250",
+        appId: "1:580968952250:web:4e93c51d5be532e4846d83"
+    };
+
+    // 初始化 Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+
+    const LIFF_ID = "2009442267-QFf68Aj5";
+    let currentUser = null;
+
+    async function initSystem() {
         try {
             await liff.init({ liffId: LIFF_ID });
             if (!liff.isLoggedIn()) { liff.login(); return; }
-            const profile = await liff.getProfile();
             
-            const res = await fetch(GAS_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'checkUser', lineId: profile.userId })
-            });
-            const auth = await res.json();
+            const profile = await liff.getProfile();
+            await checkPermission(profile);
+            
+            document.getElementById('field-date').valueAsDate = new Date();
+            
+            // 綁定按鈕事件
+            document.getElementById('nav-add').addEventListener('click', () => showPage('add'));
+            document.getElementById('nav-list').addEventListener('click', () => showPage('list'));
+            document.getElementById('saveBtn').addEventListener('click', handleSave);
 
-            if (auth.status === 'success') {
-                user = { id: profile.userId, name: auth.name, role: auth.role };
-                document.getElementById('authOverlay').style.display = 'none';
-                document.getElementById('field-date').valueAsDate = new Date();
-                if(user.role === '觀看者') {
-                    document.getElementById('addFormCard').style.display = 'none';
-                    document.getElementById('viewerMsg').style.display = 'block';
-                }
+        } catch (e) {
+            alert("系統啟動失敗：" + e.message);
+        }
+    }
+
+    async function checkPermission(profile) {
+        const userRef = doc(db, "users", profile.userId);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+            const data = userSnap.data();
+            if (data.status === '啟用') {
+                currentUser = { id: profile.userId, name: profile.displayName, role: data.role };
+                loginSuccess();
             } else {
                 showError(profile.userId);
             }
-        } catch (e) { alert("連線初始化失敗：" + e.message); }
+        } else {
+            // 魔法機制：檢查是否已經有任何使用者。如果沒有，這個人自動成為管理員！
+            const usersQuery = await getDocs(collection(db, "users"));
+            if (usersQuery.empty) {
+                await setDoc(userRef, {
+                    name: profile.displayName,
+                    role: '管理者',
+                    status: '啟用',
+                    createdAt: serverTimestamp()
+                });
+                alert("🎉 系統偵測到您是首位使用者，已自動將您設為「最高管理者」！");
+                currentUser = { id: profile.userId, name: profile.displayName, role: '管理者' };
+                loginSuccess();
+            } else {
+                showError(profile.userId);
+            }
+        }
+    }
+
+    function loginSuccess() {
+        document.getElementById('authOverlay').style.display = 'none';
+        if (currentUser.role === '觀看者') {
+            document.getElementById('addFormCard').style.display = 'none';
+            document.getElementById('viewerMsg').style.display = 'block';
+        }
     }
 
     function showError(id) {
@@ -151,23 +200,35 @@
         const container = document.getElementById('list-container');
         container.innerHTML = '<p style="text-align:center;">讀取中...</p>';
         try {
-            const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'get', lineId: user.id }) });
-            const data = await res.json();
+            // 從 Firestore 獲取所有帳務
+            const querySnapshot = await getDocs(collection(db, "transactions"));
+            let data = [];
+            querySnapshot.forEach((doc) => {
+                data.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // 依時間排序 (新到舊)
+            data.sort((a, b) => b.idTime - a.idTime);
             
             container.innerHTML = '';
-            data.reverse().forEach(item => {
+            if (data.length === 0) {
+                container.innerHTML = '<p style="text-align:center;">目前無帳務紀錄</p>';
+                return;
+            }
+
+            data.forEach(item => {
                 const div = document.createElement('div');
-                div.className = `history-item ${item.類型 === '收入' ? 'income' : 'expense'}`;
+                div.className = `history-item ${item.type === 'income' ? 'income' : 'expense'}`;
                 div.innerHTML = `
                     <div class="history-row">
-                        <span>${item.日期} · ${item.分類}</span>
-                        <span class="amount" style="color:${item.類型 === '收入' ? '#1e7e34' : '#c82333'}">
-                            ${item.類型 === '收入' ? '+' : '-'}${item.金額}
+                        <span>${item.date} · ${item.category}</span>
+                        <span class="amount" style="color:${item.type === 'income' ? '#1e7e34' : '#c82333'}">
+                            ${item.type === 'income' ? '+' : '-'}${item.amount}
                         </span>
                     </div>
                     <div class="meta">
-                        備註: ${item.備註 || '無'} | 經手: ${item.操作者} <br>
-                        ${item.附件網址 && item.附件網址.includes('http') ? `<a href="${item.附件網址}" target="_blank">🔗 查看照片</a>` : ''}
+                        備註: ${item.note || '無'} | 經手: ${item.operator} <br>
+                        ${item.imageUrl ? `<a href="${item.imageUrl}" target="_blank">🔗 查看照片</a>` : ''}
                     </div>
                 `;
                 container.appendChild(div);
@@ -177,104 +238,100 @@
         }
     }
 
-    document.getElementById('field-file').onchange = function(e) {
-        try {
-            const reader = new FileReader();
-            reader.onload = () => {
-                document.getElementById('previewImg').src = reader.result;
-                document.getElementById('previewImg').style.display = 'block';
-            };
-            if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
-        } catch(err) {
-            alert("預覽圖片失敗: " + err.message);
-        }
-    };
+    // 圖片預覽
+    document.getElementById('field-file').addEventListener('change', function(e) {
+        const reader = new FileReader();
+        reader.onload = () => {
+            document.getElementById('previewImg').src = reader.result;
+            document.getElementById('previewImg').style.display = 'block';
+        };
+        if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+    });
 
+    // 圖片壓縮
     function compressImage(file) {
         return new Promise((resolve, reject) => {
-            try {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.src = event.target.result;
-                    img.onload = () => {
-                        const MAX_WIDTH = 800; 
-                        const MAX_HEIGHT = 800;
-                        let width = img.width;
-                        let height = img.height;
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const MAX_WIDTH = 800; 
+                    const MAX_HEIGHT = 800;
+                    let width = img.width;
+                    let height = img.height;
 
-                        if (width > height) {
-                            if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                        } else {
-                            if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-                        }
-                        const canvas = document.createElement('canvas');
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.6));
-                    };
-                    img.onerror = () => reject(new Error("圖片載入失敗"));
+                    if (width > height) {
+                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                    } else {
+                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.6));
                 };
-            } catch (e) {
-                reject(e);
-            }
+            };
         });
     }
 
+    // 核心儲存邏輯 (上傳照片 + 寫入資料庫)
     async function handleSave() {
         const btn = document.getElementById('saveBtn');
-        const payload = {
-            action: 'add',
-            lineId: user.id,
-            id: Date.now(),
-            date: document.getElementById('field-date').value,
-            type: document.getElementById('field-type').value,
-            category: document.getElementById('field-cat').value,
-            amount: document.getElementById('field-amt').value,
-            note: document.getElementById('field-note').value,
-            operator: user.name
-        };
+        const date = document.getElementById('field-date').value;
+        const type = document.getElementById('field-type').value;
+        const category = document.getElementById('field-cat').value;
+        const amount = document.getElementById('field-amt').value;
+        const note = document.getElementById('field-note').value;
+        const fileInput = document.getElementById('field-file');
 
-        if(!payload.category || !payload.amount) return alert("請填寫分類與金額");
+        if(!category || !amount) return alert("請填寫分類與金額");
 
         btn.disabled = true;
-        btn.innerText = "資料上傳中...";
+        btn.innerText = "🚀 上傳中...";
 
         try {
-            const fileInput = document.getElementById('field-file');
+            let downloadURL = "";
+            const idTime = Date.now();
+            
+            // 1. 若有照片，極速上傳至 Firebase Storage
             if(fileInput.files[0]) {
-                btn.innerText = "處理照片中...";
                 const file = fileInput.files[0];
-                const compressedBase64 = await compressImage(file);
-                payload.fileData = compressedBase64;
-                payload.fileName = "photo_" + Date.now() + ".jpg";
-                payload.fileType = "image/jpeg";
+                const base64Data = await compressImage(file);
+                const storageRef = ref(storage, `receipts/photo_${idTime}.jpg`);
+                await uploadString(storageRef, base64Data, 'data_url');
+                downloadURL = await getDownloadURL(storageRef);
             }
 
-            btn.innerText = "寫入試算表...";
-            const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
-            const result = await res.json();
-            
-            if(result.status === 'success') {
-                alert("✅ 儲存成功！");
-                location.reload();
-            } else {
-                alert("❌ 系統退回：" + result.message);
-                btn.disabled = false;
-                btn.innerText = "儲存帳務";
-            }
+            // 2. 將資料寫入 Firestore
+            btn.innerText = "📝 寫入帳本...";
+            await addDoc(collection(db, "transactions"), {
+                idTime: idTime,
+                date: date,
+                type: type,
+                category: category,
+                amount: Number(amount),
+                note: note,
+                operator: currentUser.name,
+                lineId: currentUser.id,
+                imageUrl: downloadURL,
+                timestamp: serverTimestamp()
+            });
+
+            alert("✅ 極速儲存成功！");
+            location.reload();
+
         } catch(e) {
-            // 現在發生錯誤會明確彈出視窗，不會無限轉圈了
-            alert("連線或程式錯誤: " + e.message);
+            alert("錯誤: " + e.message);
             btn.disabled = false;
-            btn.innerText = "儲存帳務";
+            btn.innerText = "🚀 極速儲存帳務";
         }
     }
 
-    window.onload = init;
+    window.onload = initSystem;
 </script>
 </body>
 </html>
