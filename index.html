@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 強制清除快取設定 -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>天聖宮帳務系統 v2.2</title>
+    <title>天聖宮帳務系統 v2.3</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
         :root { --primary: #8B0000; --secondary: #D4AF37; --bg: #f4f6f9; --income: #1e7e34; --expense: #c82333; }
@@ -49,7 +50,7 @@
     </div>
 </div>
 
-<div class="header"><h3 style="margin:0;">天聖宮帳務系統 v2.2</h3></div>
+<div class="header"><h3 style="margin:0;">天聖宮帳務系統 v2.3</h3></div>
 
 <div class="container" id="appUI">
     <div id="page-add">
@@ -90,6 +91,7 @@
     </div>
 
     <div id="page-list" style="display:none;">
+        <button class="btn" id="exportBtn" style="margin-bottom: 15px; background: #D4AF37; color: black; display: none;">📥 匯出 Excel (CSV) 備份</button>
         <div id="list-container"></div>
     </div>
 </div>
@@ -99,15 +101,15 @@
     <div class="nav-item" id="nav-list">歷史紀錄</div>
 </div>
 
-<!-- 載入 Firebase 核心模組 (只保留資料庫功能) -->
+<!-- 載入 Firebase 核心模組 (只保留資料庫功能，照片交給 ImgBB) -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { initializeFirestore, collection, doc, getDoc, setDoc, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // ▼▼▼ 這裡替換成您在 ImgBB 網站申請到的金鑰 ▼▼▼
+    // ImgBB 免費圖床金鑰
     const IMGBB_API_KEY = "cc1bb29566aa90224138774fca9a7c41";
-    // ▲▲▲ 替換結束 ▲▲▲
 
+    // Firebase 連線金鑰
     const firebaseConfig = {
         apiKey: "AIzaSyBf8hWz_2gthJvQVxo7BU_Jqep3gRZewv8",
         authDomain: "tsg-app-4d96d.firebaseapp.com",
@@ -122,6 +124,7 @@
 
     const LIFF_ID = "2009442267-QFf68Aj5";
     let currentUser = null;
+    let cachedTransactions = []; // 用來暫存資料給匯出功能使用
 
     async function initSystem() {
         try {
@@ -136,6 +139,7 @@
             document.getElementById('nav-add').addEventListener('click', () => showPage('add'));
             document.getElementById('nav-list').addEventListener('click', () => showPage('list'));
             document.getElementById('saveBtn').addEventListener('click', handleSave);
+            document.getElementById('exportBtn').addEventListener('click', exportToCSV);
         } catch (e) {
             alert("系統啟動失敗：\n" + e.message);
             document.getElementById('loaderUI').innerHTML = `<p style="color:red; font-weight:bold;">連線失敗</p>`;
@@ -178,6 +182,10 @@
             document.getElementById('addFormCard').style.display = 'none';
             document.getElementById('viewerMsg').style.display = 'block';
         }
+        // 只有管理者可以匯出資料
+        if (currentUser.role === '管理者') {
+            document.getElementById('exportBtn').style.display = 'block';
+        }
     }
 
     function showError(id) {
@@ -205,6 +213,7 @@
             });
             
             data.sort((a, b) => b.idTime - a.idTime);
+            cachedTransactions = data; // 存到全域變數供匯出使用
             
             container.innerHTML = '';
             if (data.length === 0) {
@@ -234,6 +243,35 @@
         }
     }
 
+    // 匯出 CSV 備份功能
+    function exportToCSV() {
+        if (cachedTransactions.length === 0) {
+            alert("目前沒有資料可以匯出喔！");
+            return;
+        }
+
+        // 加入 BOM 確保 Excel 打開中文不會亂碼
+        let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+        csvContent += "日期,類型,項目分類,金額,備註,操作人員,照片連結\n";
+
+        cachedTransactions.forEach(item => {
+            const type = item.type === 'income' ? '收入' : '支出';
+            // 處理備註中的逗號與換行，避免 CSV 格式跑版
+            const note = item.note ? item.note.replace(/,/g, "，").replace(/\n/g, " ") : "";
+            const row = `${item.date},${type},${item.category},${item.amount},${note},${item.operator},${item.imageUrl || ''}`;
+            csvContent += row + "\n";
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `天聖宮帳務備份_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    // 圖片預覽
     document.getElementById('field-file').addEventListener('change', function(e) {
         const reader = new FileReader();
         reader.onload = () => {
@@ -243,6 +281,7 @@
         if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
     });
 
+    // 圖片壓縮
     function compressImage(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -278,6 +317,7 @@
         });
     }
 
+    // 儲存邏輯
     async function handleSave() {
         const btn = document.getElementById('saveBtn');
         const date = document.getElementById('field-date').value;
@@ -323,7 +363,7 @@
                 }
             }
 
-            // 寫入 Firebase 資料庫 (極速)
+            // 寫入 Firebase 資料庫
             btn.innerText = "📝 寫入帳本...";
             await addDoc(collection(db, "transactions"), {
                 idTime: idTime,
@@ -338,7 +378,7 @@
                 timestamp: serverTimestamp()
             });
 
-            alert("✅ 極速儲存成功！");
+            alert("✅ 儲存成功！");
             location.reload();
 
         } catch(e) {
