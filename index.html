@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>天聖宮帳務系統 v2.0</title>
+    <title>天聖宮帳務系統 v2.1</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
         :root { --primary: #8B0000; --secondary: #D4AF37; --bg: #f4f6f9; --income: #1e7e34; --expense: #c82333; }
@@ -49,7 +49,7 @@
     </div>
 </div>
 
-<div class="header"><h3 style="margin:0;">天聖宮帳務系統 v2.0 (極速版)</h3></div>
+<div class="header"><h3 style="margin:0;">天聖宮帳務系統 v2.1</h3></div>
 
 <div class="container" id="appUI">
     <div id="page-add">
@@ -79,10 +79,11 @@
             </div>
             <div class="form-group">
                 <label>附件照片</label>
-                <input type="file" id="field-file" accept="image/jpeg, image/png, image/jpg">
+                <!-- 移除了嚴格的 accept 限制，讓所有格式都能先被選取進來檢驗 -->
+                <input type="file" id="field-file" accept="image/*">
                 <img id="previewImg">
             </div>
-            <button class="btn btn-submit" id="saveBtn">🚀 極速儲存帳務</button>
+            <button class="btn btn-submit" id="saveBtn">🚀 儲存帳務</button>
         </div>
         <div id="viewerMsg" style="display:none; text-align:center; padding:20px; color:#666;">
             您的權限為「觀看者」，僅供查詢紀錄。
@@ -105,7 +106,6 @@
     import { initializeFirestore, collection, doc, getDoc, setDoc, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-    // 您的專屬 Firebase 鑰匙
     const firebaseConfig = {
         apiKey: "AIzaSyBf8hWz_2gthJvQVxo7BU_Jqep3gRZewv8",
         authDomain: "tsg-app-4d96d.firebaseapp.com",
@@ -115,14 +115,8 @@
         appId: "1:580968952250:web:4e93c51d5be532e4846d83"
     };
 
-    // 初始化 Firebase
     const app = initializeApp(firebaseConfig);
-    
-    // 【關鍵修正】強制使用 Long Polling，解決 LINE 瀏覽器阻擋連線的問題
-    const db = initializeFirestore(app, {
-        experimentalForceLongPolling: true
-    });
-    
+    const db = initializeFirestore(app, { experimentalForceLongPolling: true });
     const storage = getStorage(app);
 
     const LIFF_ID = "2009442267-QFf68Aj5";
@@ -138,13 +132,16 @@
             
             document.getElementById('field-date').valueAsDate = new Date();
             
-            // 綁定按鈕事件
             document.getElementById('nav-add').addEventListener('click', () => showPage('add'));
             document.getElementById('nav-list').addEventListener('click', () => showPage('list'));
             document.getElementById('saveBtn').addEventListener('click', handleSave);
-
         } catch (e) {
-            alert("系統啟動失敗：" + e.message);
+            let errorMsg = e.message;
+            if (errorMsg.includes("client is offline")) {
+                errorMsg = "無法連線到資料庫！👉 請確認您已在 Firebase 後台完成設定。";
+            }
+            alert("系統啟動失敗：\n" + errorMsg);
+            document.getElementById('loaderUI').innerHTML = `<p style="color:red; font-weight:bold;">連線失敗，請檢查網路或設定</p>`;
         }
     }
 
@@ -161,7 +158,6 @@
                 showError(profile.userId);
             }
         } else {
-            // 魔法機制：檢查是否已經有任何使用者。如果沒有，這個人自動成為管理員！
             const usersQuery = await getDocs(collection(db, "users"));
             if (usersQuery.empty) {
                 await setDoc(userRef, {
@@ -205,14 +201,12 @@
         const container = document.getElementById('list-container');
         container.innerHTML = '<p style="text-align:center;">讀取中...</p>';
         try {
-            // 從 Firestore 獲取所有帳務
             const querySnapshot = await getDocs(collection(db, "transactions"));
             let data = [];
             querySnapshot.forEach((doc) => {
                 data.push({ id: doc.id, ...doc.data() });
             });
             
-            // 依時間排序 (新到舊)
             data.sort((a, b) => b.idTime - a.idTime);
             
             container.innerHTML = '';
@@ -243,7 +237,6 @@
         }
     }
 
-    // 圖片預覽
     document.getElementById('field-file').addEventListener('change', function(e) {
         const reader = new FileReader();
         reader.onload = () => {
@@ -253,37 +246,45 @@
         if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
     });
 
-    // 圖片壓縮
+    // 加入更嚴謹的防當機壓縮機制
     function compressImage(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
             reader.onload = (event) => {
                 const img = new Image();
-                img.src = event.target.result;
                 img.onload = () => {
-                    const MAX_WIDTH = 800; 
-                    const MAX_HEIGHT = 800;
-                    let width = img.width;
-                    let height = img.height;
+                    try {
+                        const MAX_WIDTH = 800; 
+                        const MAX_HEIGHT = 800;
+                        let width = img.width;
+                        let height = img.height;
 
-                    if (width > height) {
-                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                    } else {
-                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                        if (width > height) {
+                            if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                        } else {
+                            if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.6));
+                    } catch (e) {
+                        reject(new Error("手機記憶體不足，壓縮圖片失敗"));
                     }
-                    const canvas = document.createElement('canvas');
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.6));
                 };
+                img.onerror = () => {
+                    // 若圖片格式不支援 (例如 HEIC)，直接回傳原檔 base64，不進行壓縮
+                    resolve(event.target.result);
+                };
+                img.src = event.target.result;
             };
+            reader.onerror = () => reject(new Error("無法讀取手機檔案"));
         });
     }
 
-    // 核心儲存邏輯 (上傳照片 + 寫入資料庫)
     async function handleSave() {
         const btn = document.getElementById('saveBtn');
         const date = document.getElementById('field-date').value;
@@ -296,23 +297,35 @@
         if(!category || !amount) return alert("請填寫分類與金額");
 
         btn.disabled = true;
-        btn.innerText = "🚀 上傳中...";
 
         try {
             let downloadURL = "";
             const idTime = Date.now();
             
-            // 1. 若有照片，極速上傳至 Firebase Storage
             if(fileInput.files[0]) {
                 const file = fileInput.files[0];
+                
+                // 階段 1: 處理照片
+                btn.innerText = "⏳ 處理照片中...";
                 const base64Data = await compressImage(file);
+
+                // 階段 2: 傳送雲端
+                btn.innerText = "☁️ 傳送至雲端...";
                 const storageRef = ref(storage, `receipts/photo_${idTime}.jpg`);
-                await uploadString(storageRef, base64Data, 'data_url');
+                
+                // 加入 15 秒超時機制防卡死
+                const uploadPromise = uploadString(storageRef, base64Data, 'data_url');
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("雲端空間連線逾時，請檢查 Storage 是否已開通且設為測試模式。")), 15000));
+                
+                await Promise.race([uploadPromise, timeoutPromise]);
+                
+                // 階段 3: 取得連結
+                btn.innerText = "🔗 取得連結...";
                 downloadURL = await getDownloadURL(storageRef);
             }
 
-            // 2. 將資料寫入 Firestore
-            btn.innerText = "📝 寫入帳本...";
+            // 階段 4: 寫入資料庫
+            btn.innerText = "📝 寫入資料庫...";
             await addDoc(collection(db, "transactions"), {
                 idTime: idTime,
                 date: date,
@@ -326,13 +339,13 @@
                 timestamp: serverTimestamp()
             });
 
-            alert("✅ 極速儲存成功！");
+            alert("✅ 儲存成功！");
             location.reload();
 
         } catch(e) {
-            alert("錯誤: " + e.message);
+            alert("❌ 錯誤: " + e.message);
             btn.disabled = false;
-            btn.innerText = "🚀 極速儲存帳務";
+            btn.innerText = "🚀 重新儲存";
         }
     }
 
