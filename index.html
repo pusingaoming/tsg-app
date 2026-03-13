@@ -102,7 +102,7 @@
 <!-- 載入 Firebase 核心模組 -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, doc, getDoc, setDoc, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { initializeFirestore, collection, doc, getDoc, setDoc, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     // 您的專屬 Firebase 鑰匙
@@ -117,7 +117,12 @@
 
     // 初始化 Firebase
     const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    
+    // 【關鍵修正】強制使用 Long Polling，解決 LINE 瀏覽器阻擋連線的問題
+    const db = initializeFirestore(app, {
+        experimentalForceLongPolling: true
+    });
+    
     const storage = getStorage(app);
 
     const LIFF_ID = "2009442267-QFf68Aj5";
