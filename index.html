@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>天聖宮帳務系統 v2.1</title>
+    <title>天聖宮帳務系統 v2.2</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
         :root { --primary: #8B0000; --secondary: #D4AF37; --bg: #f4f6f9; --income: #1e7e34; --expense: #c82333; }
@@ -40,7 +40,7 @@
 <div id="authOverlay">
     <div id="loaderUI">
         <div class="loader"></div>
-        <p>Firebase 雲端引擎連線中...</p>
+        <p>系統連線中...</p>
     </div>
     <div id="errorUI" style="display:none;">
         <p style="color:red; font-weight:bold;">⚠️ 存取權限受限</p>
@@ -49,7 +49,7 @@
     </div>
 </div>
 
-<div class="header"><h3 style="margin:0;">天聖宮帳務系統 v2.1</h3></div>
+<div class="header"><h3 style="margin:0;">天聖宮帳務系統 v2.2</h3></div>
 
 <div class="container" id="appUI">
     <div id="page-add">
@@ -79,11 +79,10 @@
             </div>
             <div class="form-group">
                 <label>附件照片</label>
-                <!-- 移除了嚴格的 accept 限制，讓所有格式都能先被選取進來檢驗 -->
                 <input type="file" id="field-file" accept="image/*">
                 <img id="previewImg">
             </div>
-            <button class="btn btn-submit" id="saveBtn">🚀 儲存帳務</button>
+            <button class="btn btn-submit" id="saveBtn">🚀 極速儲存帳務</button>
         </div>
         <div id="viewerMsg" style="display:none; text-align:center; padding:20px; color:#666;">
             您的權限為「觀看者」，僅供查詢紀錄。
@@ -100,11 +99,14 @@
     <div class="nav-item" id="nav-list">歷史紀錄</div>
 </div>
 
-<!-- 載入 Firebase 核心模組 -->
+<!-- 載入 Firebase 核心模組 (只保留資料庫功能) -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { initializeFirestore, collection, doc, getDoc, setDoc, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
+    // ▼▼▼ 這裡替換成您在 ImgBB 網站申請到的金鑰 ▼▼▼
+    const IMGBB_API_KEY = "cc1bb29566aa90224138774fca9a7c41";
+    // ▲▲▲ 替換結束 ▲▲▲
 
     const firebaseConfig = {
         apiKey: "AIzaSyBf8hWz_2gthJvQVxo7BU_Jqep3gRZewv8",
@@ -117,7 +119,6 @@
 
     const app = initializeApp(firebaseConfig);
     const db = initializeFirestore(app, { experimentalForceLongPolling: true });
-    const storage = getStorage(app);
 
     const LIFF_ID = "2009442267-QFf68Aj5";
     let currentUser = null;
@@ -136,12 +137,8 @@
             document.getElementById('nav-list').addEventListener('click', () => showPage('list'));
             document.getElementById('saveBtn').addEventListener('click', handleSave);
         } catch (e) {
-            let errorMsg = e.message;
-            if (errorMsg.includes("client is offline")) {
-                errorMsg = "無法連線到資料庫！👉 請確認您已在 Firebase 後台完成設定。";
-            }
-            alert("系統啟動失敗：\n" + errorMsg);
-            document.getElementById('loaderUI').innerHTML = `<p style="color:red; font-weight:bold;">連線失敗，請檢查網路或設定</p>`;
+            alert("系統啟動失敗：\n" + e.message);
+            document.getElementById('loaderUI').innerHTML = `<p style="color:red; font-weight:bold;">連線失敗</p>`;
         }
     }
 
@@ -246,7 +243,6 @@
         if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
     });
 
-    // 加入更嚴謹的防當機壓縮機制
     function compressImage(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -272,16 +268,13 @@
                         ctx.drawImage(img, 0, 0, width, height);
                         resolve(canvas.toDataURL('image/jpeg', 0.6));
                     } catch (e) {
-                        reject(new Error("手機記憶體不足，壓縮圖片失敗"));
+                        reject(new Error("壓縮失敗"));
                     }
                 };
-                img.onerror = () => {
-                    // 若圖片格式不支援 (例如 HEIC)，直接回傳原檔 base64，不進行壓縮
-                    resolve(event.target.result);
-                };
+                img.onerror = () => resolve(event.target.result);
                 img.src = event.target.result;
             };
-            reader.onerror = () => reject(new Error("無法讀取手機檔案"));
+            reader.onerror = () => reject(new Error("讀取檔案失敗"));
         });
     }
 
@@ -296,36 +289,42 @@
 
         if(!category || !amount) return alert("請填寫分類與金額");
 
+        if (fileInput.files[0] && IMGBB_API_KEY.includes("請將您")) {
+            return alert("❌ 系統設定未完成：請先在程式碼中填入 ImgBB 的 API 金鑰！");
+        }
+
         btn.disabled = true;
 
         try {
             let downloadURL = "";
             const idTime = Date.now();
             
+            // 使用 ImgBB 圖床服務
             if(fileInput.files[0]) {
+                btn.innerText = "☁️ 傳送照片至圖床...";
                 const file = fileInput.files[0];
-                
-                // 階段 1: 處理照片
-                btn.innerText = "⏳ 處理照片中...";
                 const base64Data = await compressImage(file);
+                
+                // 去除 base64 前綴，準備傳送給 ImgBB
+                const base64Clean = base64Data.split(',')[1];
+                const formData = new FormData();
+                formData.append("image", base64Clean);
 
-                // 階段 2: 傳送雲端
-                btn.innerText = "☁️ 傳送至雲端...";
-                const storageRef = ref(storage, `receipts/photo_${idTime}.jpg`);
+                const uploadRes = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+                    method: "POST",
+                    body: formData
+                });
                 
-                // 加入 15 秒超時機制防卡死
-                const uploadPromise = uploadString(storageRef, base64Data, 'data_url');
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("雲端空間連線逾時，請檢查 Storage 是否已開通且設為測試模式。")), 15000));
-                
-                await Promise.race([uploadPromise, timeoutPromise]);
-                
-                // 階段 3: 取得連結
-                btn.innerText = "🔗 取得連結...";
-                downloadURL = await getDownloadURL(storageRef);
+                const uploadJson = await uploadRes.json();
+                if(uploadJson.success) {
+                    downloadURL = uploadJson.data.url;
+                } else {
+                    throw new Error(uploadJson.error.message || "圖床拒絕存取");
+                }
             }
 
-            // 階段 4: 寫入資料庫
-            btn.innerText = "📝 寫入資料庫...";
+            // 寫入 Firebase 資料庫 (極速)
+            btn.innerText = "📝 寫入帳本...";
             await addDoc(collection(db, "transactions"), {
                 idTime: idTime,
                 date: date,
@@ -339,7 +338,7 @@
                 timestamp: serverTimestamp()
             });
 
-            alert("✅ 儲存成功！");
+            alert("✅ 極速儲存成功！");
             location.reload();
 
         } catch(e) {
