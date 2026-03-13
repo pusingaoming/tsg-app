@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 加入防快取標籤 -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>天聖宮雲端帳務系統</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
@@ -10,35 +14,25 @@
         body { font-family: sans-serif; margin: 0; background: var(--bg); padding-bottom: 70px; }
         .header { background: var(--primary); color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
         .container { padding: 15px; max-width: 600px; margin: auto; }
-        
-        /* 遮罩層 */
         #authOverlay { position: fixed; inset: 0; background: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; text-align: center; padding: 20px; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        /* 卡片樣式 */
         .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .form-group { margin-bottom: 12px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; color: #444; }
         input, select, textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        
         .btn { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; }
         .btn-submit { background: var(--primary); color: white; }
         .btn-submit:disabled { background: #ccc; }
-
-        /* 歷史紀錄卡片 */
         .history-item { border-left: 5px solid #ccc; padding: 12px; background: white; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .history-item.income { border-left-color: var(--income); }
         .history-item.expense { border-left-color: var(--expense); }
         .history-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
         .amount { font-weight: bold; font-size: 18px; }
         .meta { font-size: 13px; color: #777; }
-
-        /* 導航列 */
         .nav { position: fixed; bottom: 0; width: 100%; background: white; display: flex; border-top: 1px solid #ddd; }
         .nav-item { flex: 1; text-align: center; padding: 15px; color: #666; font-weight: bold; text-decoration: none; cursor: pointer; }
         .nav-item.active { color: var(--primary); border-top: 3px solid var(--primary); }
-
         #previewImg { width: 100%; border-radius: 8px; margin-top: 10px; display: none; }
     </style>
 </head>
@@ -47,7 +41,7 @@
 <div id="authOverlay">
     <div id="loaderUI">
         <div class="loader"></div>
-        <p>天聖宮系統連線中...</p>
+        <p>系統連線中 (v1.7)...</p>
     </div>
     <div id="errorUI" style="display:none;">
         <p style="color:red; font-weight:bold;">⚠️ 存取權限受限</p>
@@ -56,7 +50,8 @@
     </div>
 </div>
 
-<div class="header"><h3>天聖宮帳務系統</h3></div>
+<!-- 這裡加上了 v1.7，用來確認有沒有更新成功 -->
+<div class="header"><h3 style="margin:0;">天聖宮帳務系統 v1.7</h3></div>
 
 <div class="container" id="appUI">
     <div id="page-add">
@@ -86,7 +81,8 @@
             </div>
             <div class="form-group">
                 <label>附件照片</label>
-                <input type="file" id="field-file" accept="image/*" capture="environment">
+                <!-- 徹底移除 capture 屬性，改用最寬鬆的設定 -->
+                <input type="file" id="field-file" accept="image/jpeg, image/png, image/jpg">
                 <img id="previewImg">
             </div>
             <button class="btn btn-submit" id="saveBtn" onclick="handleSave()">儲存帳務</button>
@@ -134,7 +130,7 @@
             } else {
                 showError(profile.userId);
             }
-        } catch (e) { alert("連線失敗：" + e); }
+        } catch (e) { alert("連線初始化失敗：" + e.message); }
     }
 
     function showError(id) {
@@ -154,38 +150,79 @@
     async function fetchList() {
         const container = document.getElementById('list-container');
         container.innerHTML = '<p style="text-align:center;">讀取中...</p>';
-        const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'get', lineId: user.id }) });
-        const data = await res.json();
-        
-        container.innerHTML = '';
-        data.reverse().forEach(item => {
-            const div = document.createElement('div');
-            div.className = `history-item ${item.類型 === '收入' ? 'income' : 'expense'}`;
-            div.innerHTML = `
-                <div class="history-row">
-                    <span>${item.日期} · ${item.分類}</span>
-                    <span class="amount" style="color:${item.類型 === '收入' ? '#1e7e34' : '#c82333'}">
-                        ${item.類型 === '收入' ? '+' : '-'}${item.金額}
-                    </span>
-                </div>
-                <div class="meta">
-                    備註: ${item.備註 || '無'} | 經手: ${item.操作者} <br>
-                    ${item.附件網址 ? `<a href="${item.附件網址}" target="_blank">🔗 查看照片</a>` : ''}
-                </div>
-            `;
-            container.appendChild(div);
-        });
+        try {
+            const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'get', lineId: user.id }) });
+            const data = await res.json();
+            
+            container.innerHTML = '';
+            data.reverse().forEach(item => {
+                const div = document.createElement('div');
+                div.className = `history-item ${item.類型 === '收入' ? 'income' : 'expense'}`;
+                div.innerHTML = `
+                    <div class="history-row">
+                        <span>${item.日期} · ${item.分類}</span>
+                        <span class="amount" style="color:${item.類型 === '收入' ? '#1e7e34' : '#c82333'}">
+                            ${item.類型 === '收入' ? '+' : '-'}${item.金額}
+                        </span>
+                    </div>
+                    <div class="meta">
+                        備註: ${item.備註 || '無'} | 經手: ${item.操作者} <br>
+                        ${item.附件網址 && item.附件網址.includes('http') ? `<a href="${item.附件網址}" target="_blank">🔗 查看照片</a>` : ''}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        } catch(e) {
+            container.innerHTML = '<p style="text-align:center; color:red;">讀取失敗: '+e.message+'</p>';
+        }
     }
 
-    // 圖片預覽
     document.getElementById('field-file').onchange = function(e) {
-        const reader = new FileReader();
-        reader.onload = () => {
-            document.getElementById('previewImg').src = reader.result;
-            document.getElementById('previewImg').style.display = 'block';
-        };
-        if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+        try {
+            const reader = new FileReader();
+            reader.onload = () => {
+                document.getElementById('previewImg').src = reader.result;
+                document.getElementById('previewImg').style.display = 'block';
+            };
+            if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+        } catch(err) {
+            alert("預覽圖片失敗: " + err.message);
+        }
     };
+
+    function compressImage(file) {
+        return new Promise((resolve, reject) => {
+            try {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const MAX_WIDTH = 800; 
+                        const MAX_HEIGHT = 800;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                        } else {
+                            if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.6));
+                    };
+                    img.onerror = () => reject(new Error("圖片載入失敗"));
+                };
+            } catch (e) {
+                reject(e);
+            }
+        });
+    }
 
     async function handleSave() {
         const btn = document.getElementById('saveBtn');
@@ -204,28 +241,34 @@
         if(!payload.category || !payload.amount) return alert("請填寫分類與金額");
 
         btn.disabled = true;
-        btn.innerText = "儲存中...";
+        btn.innerText = "資料上傳中...";
 
-        const fileInput = document.getElementById('field-file');
-        if(fileInput.files[0]) {
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-            const base64Promise = new Promise(res => {
-                reader.onload = () => res(reader.result);
-                reader.readAsDataURL(file);
-            });
-            payload.fileData = await base64Promise;
-            payload.fileName = file.name;
-            payload.fileType = file.type;
-        }
+        try {
+            const fileInput = document.getElementById('field-file');
+            if(fileInput.files[0]) {
+                btn.innerText = "處理照片中...";
+                const file = fileInput.files[0];
+                const compressedBase64 = await compressImage(file);
+                payload.fileData = compressedBase64;
+                payload.fileName = "photo_" + Date.now() + ".jpg";
+                payload.fileType = "image/jpeg";
+            }
 
-        const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
-        const result = await res.json();
-        if(result.status === 'success') {
-            alert("儲存成功！");
-            location.reload();
-        } else {
-            alert("失敗：" + result.message);
+            btn.innerText = "寫入試算表...";
+            const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
+            const result = await res.json();
+            
+            if(result.status === 'success') {
+                alert("✅ 儲存成功！");
+                location.reload();
+            } else {
+                alert("❌ 系統退回：" + result.message);
+                btn.disabled = false;
+                btn.innerText = "儲存帳務";
+            }
+        } catch(e) {
+            // 現在發生錯誤會明確彈出視窗，不會無限轉圈了
+            alert("連線或程式錯誤: " + e.message);
             btn.disabled = false;
             btn.innerText = "儲存帳務";
         }
