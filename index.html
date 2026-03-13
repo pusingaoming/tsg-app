@@ -2,257 +2,236 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>天聖宮雲端帳務系統</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
-        :root {
-            --primary-color: #8B0000;
-            --secondary-color: #D4AF37;
-            --income-color: #1e7e34;
-            --expense-color: #c82333;
-            --bg-color: #f4f6f9;
-        }
-
-        body { font-family: "Microsoft JhengHei", sans-serif; margin: 0; padding: 0; background-color: var(--bg-color); }
-        .header { background: var(--primary-color); color: white; padding: 20px; text-align: center; position: sticky; top: 0; z-index: 100; }
-        .container { padding: 15px; max-width: 800px; margin: auto; }
+        :root { --primary: #8B0000; --secondary: #D4AF37; --bg: #f4f6f9; --income: #1e7e34; --expense: #c82333; }
+        body { font-family: sans-serif; margin: 0; background: var(--bg); padding-bottom: 70px; }
+        .header { background: var(--primary); color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .container { padding: 15px; max-width: 600px; margin: auto; }
         
-        /* 權限阻擋畫面 */
-        #authOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; text-align: center; padding: 20px; box-sizing: border-box; }
-        
-        /* 卡片式設計 */
-        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 5px solid #ccc; }
-        .card.income { border-left-color: var(--income-color); }
-        .card.expense { border-left-color: var(--expense-color); }
-        .card-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; }
-        .card-body { font-size: 14px; color: #555; }
-        
-        /* 表單樣式 */
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        .btn { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        .btn-primary { background: var(--primary-color); color: white; }
-        .btn-upload { background: #6c757d; color: white; margin-top: 10px; }
-        
-        /* 載入中動畫 */
-        .loader { border: 5px solid #f3f3f3; border-top: 5px solid var(--primary-color); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 10px; }
+        /* 遮罩層 */
+        #authOverlay { position: fixed; inset: 0; background: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; text-align: center; padding: 20px; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 卡片樣式 */
+        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #444; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
         
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; }
+        .btn-submit { background: var(--primary); color: white; }
+        .btn-submit:disabled { background: #ccc; }
+
+        /* 歷史紀錄卡片 */
+        .history-item { border-left: 5px solid #ccc; padding: 12px; background: white; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .history-item.income { border-left-color: var(--income); }
+        .history-item.expense { border-left-color: var(--expense); }
+        .history-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .amount { font-weight: bold; font-size: 18px; }
+        .meta { font-size: 13px; color: #777; }
+
+        /* 導航列 */
+        .nav { position: fixed; bottom: 0; width: 100%; background: white; display: flex; border-top: 1px solid #ddd; }
+        .nav-item { flex: 1; text-align: center; padding: 15px; color: #666; font-weight: bold; text-decoration: none; cursor: pointer; }
+        .nav-item.active { color: var(--primary); border-top: 3px solid var(--primary); }
+
         #previewImg { width: 100%; border-radius: 8px; margin-top: 10px; display: none; }
-        .tab-bar { display: flex; background: white; border-top: 1px solid #ddd; position: fixed; bottom: 0; width: 100%; }
-        .tab-item { flex: 1; text-align: center; padding: 15px; font-size: 14px; color: #666; cursor: pointer; }
-        .tab-item.active { color: var(--primary-color); font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div id="authOverlay">
-    <div class="loader"></div>
-    <p id="authStatus">正在驗證天聖宮系統權限...</p>
-    <p id="userLiffId" style="font-size: 12px; color: #999; margin-top: 20px;"></p>
+    <div id="loaderUI">
+        <div class="loader"></div>
+        <p>天聖宮系統連線中...</p>
+    </div>
+    <div id="errorUI" style="display:none;">
+        <p style="color:red; font-weight:bold;">⚠️ 存取權限受限</p>
+        <p id="myLineId" style="word-break: break-all; font-size: 12px; background: #eee; padding: 10px;"></p>
+        <p>請將上方 ID 傳給管理員開通</p>
+    </div>
 </div>
 
-<div class="header">
-    <h2 style="margin:0;">天聖宮雲端帳務</h2>
-</div>
+<div class="header"><h3>天聖宮帳務系統</h3></div>
 
-<div class="container" id="mainContent" style="padding-bottom: 80px;">
-    <div id="addSection">
-        <div class="card">
-            <h3>📝 新增收支錄入</h3>
+<div class="container" id="appUI">
+    <div id="page-add">
+        <div class="card" id="addFormCard">
             <div class="form-group">
-                <label>日期</label>
-                <input type="date" id="transDate">
+                <label>收支日期</label>
+                <input type="date" id="field-date">
             </div>
             <div class="form-group">
                 <label>類型</label>
-                <select id="transType">
+                <select id="field-type">
                     <option value="income">收入 (+)</option>
                     <option value="expense">支出 (-)</option>
                 </select>
             </div>
             <div class="form-group">
                 <label>項目分類</label>
-                <input type="text" id="transCategory" placeholder="例如：香油錢、金紙費">
+                <input type="text" id="field-cat" placeholder="例如：香油錢、修繕費">
             </div>
             <div class="form-group">
                 <label>金額</label>
-                <input type="number" id="transAmount" inputmode="numeric">
+                <input type="number" id="field-amt" inputmode="numeric">
             </div>
             <div class="form-group">
                 <label>備註</label>
-                <textarea id="transNote" rows="2"></textarea>
+                <textarea id="field-note"></textarea>
             </div>
             <div class="form-group">
-                <label>附件照片 (拍收據)</label>
-                <input type="file" id="fileInput" accept="image/*" capture="environment">
+                <label>附件照片</label>
+                <input type="file" id="field-file" accept="image/*" capture="environment">
                 <img id="previewImg">
             </div>
-            <button class="btn btn-primary" onclick="submitData()" id="submitBtn">儲存帳務資料</button>
+            <button class="btn btn-submit" id="saveBtn" onclick="handleSave()">儲存帳務</button>
+        </div>
+        <div id="viewerMsg" style="display:none; text-align:center; padding:20px; color:#666;">
+            您的權限為「觀看者」，僅供查詢紀錄。
         </div>
     </div>
 
-    <div id="historySection" style="display:none;">
-        <h3>📜 歷史紀錄</h3>
-        <div id="transactionList">
-            </div>
+    <div id="page-list" style="display:none;">
+        <div id="list-container"></div>
     </div>
 </div>
 
-<div class="tab-bar">
-    <div class="tab-item active" onclick="switchTab('add')">新增帳務</div>
-    <div class="tab-item" onclick="switchTab('history')">查詢報表</div>
+<div class="nav">
+    <div class="nav-item active" id="nav-add" onclick="showPage('add')">新增帳務</div>
+    <div class="nav-item" id="nav-list" onclick="showPage('list')">歷史紀錄</div>
 </div>
 
 <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbx7v13SZGVSFoOkQf9hvvc4etXNjaTuO1u_RKr6gLRorS6sr4CV_5-k519kbSjBK6jc/exec";
     const LIFF_ID = "2009442267-QFf68Aj5";
-    let userData = null;
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbx7v13SZGVSFoOkQf9hvvc4etXNjaTuO1u_RKr6gLRorS6sr4CV_5-k519kbSjBK6jc/exec";
+    let user = null;
 
-    async function initSystem() {
+    async function init() {
         try {
             await liff.init({ liffId: LIFF_ID });
-            if (!liff.isLoggedIn()) {
-                liff.login();
-                return;
-            }
+            if (!liff.isLoggedIn()) { liff.login(); return; }
             const profile = await liff.getProfile();
-            document.getElementById('userLiffId').innerText = "您的 LINE ID: " + profile.userId;
             
-            // 向 GAS 檢查權限
-            checkPermission(profile.userId, profile.displayName);
-        } catch (err) {
-            alert("系統初始化失敗: " + err);
-        }
+            const res = await fetch(GAS_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'checkUser', lineId: profile.userId })
+            });
+            const auth = await res.json();
+
+            if (auth.status === 'success') {
+                user = { id: profile.userId, name: auth.name, role: auth.role };
+                document.getElementById('authOverlay').style.display = 'none';
+                document.getElementById('field-date').valueAsDate = new Date();
+                if(user.role === '觀看者') {
+                    document.getElementById('addFormCard').style.display = 'none';
+                    document.getElementById('viewerMsg').style.display = 'block';
+                }
+            } else {
+                showError(profile.userId);
+            }
+        } catch (e) { alert("連線失敗：" + e); }
     }
 
-    async function checkPermission(lineId, displayName) {
-        const response = await fetch(GAS_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'checkUser', lineId: lineId })
-        });
-        const result = await response.json();
+    function showError(id) {
+        document.getElementById('loaderUI').style.display = 'none';
+        document.getElementById('errorUI').style.display = 'block';
+        document.getElementById('myLineId').innerText = id;
+    }
+
+    function showPage(p) {
+        document.getElementById('page-add').style.display = p === 'add' ? 'block' : 'none';
+        document.getElementById('page-list').style.display = p === 'list' ? 'block' : 'none';
+        document.getElementById('nav-add').classList.toggle('active', p === 'add');
+        document.getElementById('nav-list').classList.toggle('active', p === 'list');
+        if (p === 'list') fetchList();
+    }
+
+    async function fetchList() {
+        const container = document.getElementById('list-container');
+        container.innerHTML = '<p style="text-align:center;">讀取中...</p>';
+        const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'get', lineId: user.id }) });
+        const data = await res.json();
         
-        if (result.status === "success" && result.role !== "none") {
-            userData = { id: lineId, name: displayName, role: result.role };
-            document.getElementById('authOverlay').style.display = 'none';
-            document.getElementById('transDate').valueAsDate = new Date();
-        } else {
-            document.getElementById('authStatus').innerHTML = `<span style="color:red">權限不足</span><br>請將您的 ID 告知管理員開通權限。`;
-        }
+        container.innerHTML = '';
+        data.reverse().forEach(item => {
+            const div = document.createElement('div');
+            div.className = `history-item ${item.類型 === '收入' ? 'income' : 'expense'}`;
+            div.innerHTML = `
+                <div class="history-row">
+                    <span>${item.日期} · ${item.分類}</span>
+                    <span class="amount" style="color:${item.類型 === '收入' ? '#1e7e34' : '#c82333'}">
+                        ${item.類型 === '收入' ? '+' : '-'}${item.金額}
+                    </span>
+                </div>
+                <div class="meta">
+                    備註: ${item.備註 || '無'} | 經手: ${item.操作者} <br>
+                    ${item.附件網址 ? `<a href="${item.附件網址}" target="_blank">🔗 查看照片</a>` : ''}
+                </div>
+            `;
+            container.appendChild(div);
+        });
     }
 
-    function switchTab(tab) {
-        document.querySelectorAll('.tab-item').forEach(i => i.classList.remove('active'));
-        if (tab === 'add') {
-            document.getElementById('addSection').style.display = 'block';
-            document.getElementById('historySection').style.display = 'none';
-            event.currentTarget.classList.add('active');
-        } else {
-            document.getElementById('addSection').style.display = 'none';
-            document.getElementById('historySection').style.display = 'block';
-            event.currentTarget.classList.add('active');
-            fetchHistory();
-        }
-    }
-
-    // 圖片預覽處理
-    document.getElementById('fileInput').onchange = function(e) {
+    // 圖片預覽
+    document.getElementById('field-file').onchange = function(e) {
         const reader = new FileReader();
-        reader.onload = function() {
-            const preview = document.getElementById('previewImg');
-            preview.src = reader.result;
-            preview.style.display = 'block';
-        }
-        if (e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+        reader.onload = () => {
+            document.getElementById('previewImg').src = reader.result;
+            document.getElementById('previewImg').style.display = 'block';
+        };
+        if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
     };
 
-    async function submitData() {
-        const btn = document.getElementById('submitBtn');
-        const fileInput = document.getElementById('fileInput');
+    async function handleSave() {
+        const btn = document.getElementById('saveBtn');
         const payload = {
             action: 'add',
-            lineId: userData.id,
+            lineId: user.id,
             id: Date.now(),
-            date: document.getElementById('transDate').value,
-            type: document.getElementById('transType').value,
-            category: document.getElementById('transCategory').value,
-            amount: document.getElementById('transAmount').value,
-            note: document.getElementById('transNote').value,
-            operator: userData.name
+            date: document.getElementById('field-date').value,
+            type: document.getElementById('field-type').value,
+            category: document.getElementById('field-cat').value,
+            amount: document.getElementById('field-amt').value,
+            note: document.getElementById('field-note').value,
+            operator: user.name
         };
 
-        if (!payload.category || !payload.amount) {
-            alert("請填寫分類與金額");
-            return;
-        }
+        if(!payload.category || !payload.amount) return alert("請填寫分類與金額");
 
         btn.disabled = true;
-        btn.innerText = "資料同步中...";
+        btn.innerText = "儲存中...";
 
-        // 如果有圖檔，轉換為 Base64
-        if (fileInput.files.length > 0) {
+        const fileInput = document.getElementById('field-file');
+        if(fileInput.files[0]) {
             const file = fileInput.files[0];
-            const base64 = await toBase64(file);
-            payload.fileData = base64;
+            const reader = new FileReader();
+            const base64Promise = new Promise(res => {
+                reader.onload = () => res(reader.result);
+                reader.readAsDataURL(file);
+            });
+            payload.fileData = await base64Promise;
             payload.fileName = file.name;
             payload.fileType = file.type;
         }
 
-        try {
-            const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
-            const result = await res.json();
-            if (result.status === "success") {
-                alert("✅ 帳務儲存成功！");
-                location.reload();
-            } else {
-                alert("錯誤: " + result.message);
-            }
-        } catch (e) {
-            alert("同步失敗，請檢查網路連線");
-        } finally {
+        const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const result = await res.json();
+        if(result.status === 'success') {
+            alert("儲存成功！");
+            location.reload();
+        } else {
+            alert("失敗：" + result.message);
             btn.disabled = false;
-            btn.innerText = "儲存帳務資料";
+            btn.innerText = "儲存帳務";
         }
     }
 
-    async function fetchHistory() {
-        const listDiv = document.getElementById('transactionList');
-        listDiv.innerHTML = '<div class="loader" style="margin:20px auto;"></div>';
-        
-        const response = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'get', lineId: userData.id }) });
-        const data = await response.json();
-        
-        listDiv.innerHTML = '';
-        data.reverse().forEach(item => {
-            const card = document.createElement('div');
-            card.className = `card ${item.類型 === '收入' ? 'income' : 'expense'}`;
-            card.innerHTML = `
-                <div class="card-header">
-                    <span>${item.日期} (${item.分類})</span>
-                    <span style="color:${item.類型 === '收入' ? 'green' : 'red'}">${item.類型 === '收入' ? '+' : '-'}$${item.金額}</span>
-                </div>
-                <div class="card-body">
-                    備註: ${item.備註 || '無'}<br>
-                    經手人: ${item.操作者}<br>
-                    ${item.附件網址 ? `<a href="${item.附件網址}" target="_blank" style="color:blue">🖼️ 查看附件照片</a>` : ''}
-                </div>
-            `;
-            listDiv.appendChild(card);
-        });
-    }
-
-    const toBase64 = file => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-    });
-
-    window.onload = initSystem;
+    window.onload = init;
 </script>
-
 </body>
 </html>
